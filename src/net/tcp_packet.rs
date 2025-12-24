@@ -30,7 +30,7 @@ pub fn create_tcp_packet(buffer: &mut [u8], src_mac: MacAddr, dst_mac: MacAddr, 
     ip_header.set_version(4);
     ip_header.set_header_length(5);
     ip_header.set_total_length((IP + TCP) as u16);
-    ip_header.set_ttl(rand::thread_rng().gen_range(32..128));
+    ip_header.set_ttl(rand::rng().random_range(32..128));
     ip_header.set_next_level_protocol(pnet::packet::ip::IpNextHeaderProtocols::Tcp);
     ip_header.set_source(src_ip);
     ip_header.set_destination(dst_ip);
