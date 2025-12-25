@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
 
     let scanner = PortScanner::new(interface, arguments.target, arguments.start_port, arguments.end_port, arguments.concurrency as usize, arguments.timeout, arguments.mode);
 
-    scanner.print_summary(arguments.target, &results).await?; //test prrint summary
+    scanner.print_summary(&results).await?; //test prrint summary
 
     Ok(())
 }
