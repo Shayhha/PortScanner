@@ -1,21 +1,20 @@
 use anyhow::{anyhow, Result};
-use pnet::datalink::{NetworkInterface, DataLinkSender, DataLinkReceiver};
+use pnet::datalink::{DataLinkSender, DataLinkReceiver};
 use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::fmt::Write;
 use tokio::sync::{Semaphore, OwnedSemaphorePermit, oneshot};
+use tokio::task::JoinHandle;
 use colored::*;
 
 use crate::engine::{tcp, syn, xmas};
 use crate::engine::listener::PacketListener;
-use crate::net::interface;
+use crate::net::interface::DeviceInterface;
 use crate::utility::scanner_enums::{Mode, PortStatus};
 
 // define our custom types for scanner data structures
-pub type ScanSemaphore = Arc<Semaphore>;
-pub type ScanTasksVec = Vec<tokio::task::JoinHandle<()>>;
 pub type ProbeMap = Arc<Mutex<HashMap<u16, oneshot::Sender<PortStatus>>>>;
 pub type ResultsMap = Arc<Mutex<BTreeMap<u16, PortStatus>>>;
 pub type TxSender = Arc<Mutex<Box<dyn DataLinkSender>>>;
@@ -27,8 +26,9 @@ pub type RxReciver = Box<dyn DataLinkReceiver>;
  */
 #[derive(Clone, Debug)]
 pub struct PortScanner {
-    pub interface: NetworkInterface,
-    pub target: Ipv4Addr,
+    pub device_interface: Arc<DeviceInterface>,
+    pub target_ip: Ipv4Addr,
+    pub target_mac: MacAddr,
     pub start_port: u16,
     pub end_port: u16,
     pub concurrency: usize,
@@ -44,8 +44,11 @@ impl PortScanner {
     /**
      * Constructor for port scanner struct.
      */
-    pub fn new(interface: NetworkInterface, target: Ipv4Addr, start_port: u16, end_port: u16, concurrency: usize, timeout: u64, mode: Mode) -> Self {
-        Self { interface, target, start_port, end_port, concurrency, timeout, mode }
+    pub fn new(device_interface: Arc<DeviceInterface>, target_ip: Ipv4Addr, start_port: u16, end_port: u16, concurrency: usize, timeout: u64, mode: Mode) -> Self {
+        // resolve target MAC address, if failed use broadcast MAC address
+        let target_mac = DeviceInterface::resolve_device_mac_address(&device_interface, target_ip, timeout)
+            .unwrap_or(MacAddr::broadcast());
+        Self { device_interface, target_ip, target_mac, start_port, end_port, concurrency, timeout, mode }
     }
 
 
@@ -54,20 +57,18 @@ impl PortScanner {
      */
     pub async fn start_scan(&self) -> Result<()> {
         // initialize our data structures for scanner tasks
-        let mut scan_tasks_vec: ScanTasksVec = vec![]; //represents vector of scan tasks for each port
-        let scan_semaphore: ScanSemaphore = Arc::new(Semaphore::new(self.concurrency)); //represents semaphore for limiting number of concurrent scans
+        let mut scan_tasks_vec: Vec<JoinHandle<()>> = vec![]; //represents vector of scan tasks for each port
+        let scan_semaphore: Arc<Semaphore> = Arc::new(Semaphore::new(self.concurrency)); //represents semaphore for limiting number of concurrent scans
         let probe_map: ProbeMap = Arc::new(Mutex::new(HashMap::new())); //represents probe map for tracking responses for each port for SYN and Xmas scans, keys are port and values are sender channel
         let results_map: ResultsMap = Arc::new(Mutex::new(BTreeMap::new())); //represents results map for storing scan result for each port, keys are port and values are port status
 
         // create new datalink channel socket and initialize our tx sender and rx receiver handles
-        let (tx, rx) = interface::create_datalink_channel(&self.interface)?;
-        let interface_ip: Ipv4Addr = interface::get_ipv4_address(&self.interface)?; //get interface IPv4 address
-        let interface_mac: MacAddr = interface::get_mac_address(&self.interface)?; //get interface MAC address
+        let (tx, rx) = DeviceInterface::create_datalink_channel(&self.device_interface)?;
         let tx_sender: TxSender = Arc::new(Mutex::new(tx)); //initialize tx sender handle with mutex for async scan tasks
         let rx_receiver: RxReciver = rx; //initialize rx receiver handle for listener thread
 
         // create our packet listener task for capturing incoming response packets
-        let packet_listener: PacketListener = PacketListener::new(self.interface.clone(), probe_map.clone());
+        let packet_listener: PacketListener = PacketListener::new(self.device_interface.clone(), probe_map.clone());
         packet_listener.start_listener(rx_receiver); //start packet listener in its own thread for handling incoming response packets
 
         // iterate over each port in given range and create async scan task for each port
@@ -80,10 +81,11 @@ impl PortScanner {
                 tx_sender.clone(),
                 probe_map.clone(),
                 results_map.clone(),
-                interface_ip,
-                interface_mac,
+                self.device_interface.ip,
+                self.device_interface.mac,
+                self.target_ip,
+                self.target_mac,
                 target_port,
-                self.target,
                 self.timeout,
                 self.mode,
                 permit
@@ -101,7 +103,7 @@ impl PortScanner {
         }
         // else we failed acquiring mutex, we print error message
         else {
-            return Err(anyhow!("Scan failed on target {}: Could not fetch scan results for desired target.", self.target));
+            return Err(anyhow!("Scan failed on target {}: Could not fetch scan results for desired target.", self.target_ip));
         }
     
         Ok(())
@@ -111,12 +113,12 @@ impl PortScanner {
     /**
      * Static method for performing async port scan task for given port based on selected scan mode.
      */
-    async fn scan_port_task(tx: TxSender, probe_map: ProbeMap, results_map: ResultsMap, interface_ip: Ipv4Addr, interface_mac: MacAddr, target_port: u16, target_ip: Ipv4Addr, timeout: u64, mode: Mode, _permit: OwnedSemaphorePermit) {
+    async fn scan_port_task(tx: TxSender, probe_map: ProbeMap, results_map: ResultsMap, interface_ip: Ipv4Addr, interface_mac: MacAddr, target_ip: Ipv4Addr, target_mac: MacAddr, target_port: u16, timeout: u64, mode: Mode, _permit: OwnedSemaphorePermit) {
         //TODO perform port scan on desired port based on selected scan mode
         let status = match mode {
-            Mode::Tcp => tcp::scan_tcp(target_port, target_ip, timeout).await,
-            Mode::Syn => syn::scan_syn(tx, probe_map, interface_ip, interface_mac, target_port, target_ip, timeout).await,
-            Mode::Xmas => xmas::scan_xmas(tx, probe_map, interface_ip, interface_mac, target_port, target_ip, timeout).await
+            Mode::Tcp => tcp::scan_tcp(target_ip, target_port, timeout).await,
+            Mode::Syn => syn::scan_syn(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
+            Mode::Xmas => xmas::scan_xmas(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await
         }
         .unwrap_or_else(|e| {
             println!("Scan failed on port {}: {}", target_port, e);
@@ -147,7 +149,8 @@ impl PortScanner {
 
         // write summary header with scan configuration details
         writeln!(&mut output, "\n{} Scan Summary {}", "-".repeat(29), "-".repeat(29))?;
-        writeln!(&mut output, "Target      : {}", self.target)?;
+        writeln!(&mut output, "Target IP   : {}", self.target_ip)?;
+        writeln!(&mut output, "Target MAC  : {}\n", self.target_mac)?;
         writeln!(&mut output, "Scan mode   : {:?}", self.mode)?;
         writeln!(&mut output, "Port range  : {}-{}", self.start_port, self.end_port)?;
         writeln!(&mut output, "Concurrency : {}", self.concurrency)?;

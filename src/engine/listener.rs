@@ -1,12 +1,13 @@
-use pnet::datalink::NetworkInterface;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::Packet;
+use std::sync::Arc;
 use std::thread;
 
 use crate::engine::scanner::{ProbeMap, RxReciver};
+use crate::net::interface::DeviceInterface;
 use crate::net::tcp_builder;
 use crate::utility::scanner_enums::PortStatus;
 
@@ -16,7 +17,7 @@ use crate::utility::scanner_enums::PortStatus;
  */
 #[derive(Clone, Debug)]
 pub struct PacketListener {
-    interface: NetworkInterface,
+    device_interface: Arc<DeviceInterface>,
     probe_map: ProbeMap
 }
 
@@ -28,8 +29,8 @@ impl PacketListener {
     /**
      * Constructor for packet listener struct.
      */
-    pub fn new(interface: NetworkInterface, probe_map: ProbeMap) -> Self {
-        Self { interface, probe_map }
+    pub fn new(device_interface: Arc<DeviceInterface>, probe_map: ProbeMap) -> Self {
+        Self { device_interface, probe_map }
     }
 
 
@@ -70,9 +71,9 @@ impl PacketListener {
 
         // try to acquire lock on probe map and send port status back to its probe scanner
         if let Ok(mut probe_map) = self.probe_map.lock() {
-            // try to get the sender socket for port and remove it from map
-            if let Some(tx) = probe_map.remove(&port) {
-                let _ = tx.send(status); //send port status back to its probe scanner
+            // try to get the tx probe for port and remove it from map
+            if let Some(tx_probe) = probe_map.remove(&port) {
+                let _ = tx_probe.send(status); //send port status back to its probe scanner
             }
         }
 

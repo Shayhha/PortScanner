@@ -97,6 +97,20 @@ impl DeviceInterface {
 
 
     /**
+     * Function that checks if given target IP is in the same local network as the interface.
+     * Returns true if target IP is in the same local network, else returns false.
+     */
+    pub fn check_local_device(device_interface: &DeviceInterface, target_ip: Ipv4Addr) -> bool {
+        // calculate network address for interface and target IP addresses using our interface netmask
+        let interface_netmask = u32::from(device_interface.ip) & u32::from(device_interface.netmask);
+        let target_ip_netmask = u32::from(target_ip) & u32::from(device_interface.netmask);
+
+        // retrun true if both network addresses are same, else return false
+        interface_netmask == target_ip_netmask
+    }
+
+
+    /**
      * Function that creats new datalink channel socket for sending and receiving packets.
      * Returns DataLinkSender and DataLinkReceiver handles if opened socket successfully, else returns error.
      */
@@ -115,5 +129,47 @@ impl DeviceInterface {
     pub fn create_task_channel<T>() -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
         let (tx, rx) = oneshot::channel();
         (tx, rx)
+    }
+
+
+    /**
+     * Function that performs ARP request to resolve MAC address of given target IP on the network.
+     * Returns resolved MAC address or error if failed.
+     */
+    pub fn resolve_device_mac_address(device_interface: &DeviceInterface, target_ip: Ipv4Addr, timeout: u64) -> Result<MacAddr> {
+        // create datalink channel for sending and receiving ARP packets
+        let (mut tx_sender, mut rx_receiver) = Self::create_datalink_channel(&device_interface)?;
+
+        // determine if target IP is in our local network, if not we send ARP request to default gateway IP
+        let arp_target_ip = if Self::check_local_device(device_interface, target_ip) {
+            target_ip
+        } 
+        else {
+            device_interface.default_gateway_ip
+        };
+
+        // create ARP request packet for resolving target device MAC address
+        let arp_packet_vec: Vec<u8> = arp_builder::create_arp_request_packet(device_interface.ip, device_interface.mac, arp_target_ip)?;
+
+        // send ARP request and wait for ARP response from target device
+        tx_sender.send_to(&arp_packet_vec, None)
+            .ok_or_else(|| anyhow!("Failed to send ARP request to target device with IP: {}.", target_ip))??;
+
+        // define our start time and end time for listening for ARP response packets
+        let start_time: Instant = Instant::now();
+        let end_time: Duration = Duration::from_millis(timeout);
+
+        // listen for incuming ARP response packets
+        while start_time.elapsed() < end_time {
+            // get packet from rx receiver
+            let packet = rx_receiver.next()?;
+
+            // if we received ARP response from target IP, parse the packet and return the MAC address
+            if let Some(mac) = arp_builder::parse_arp_response(packet, device_interface.ip, device_interface.mac, target_ip) {
+                return Ok(mac);
+            }
+        }
+
+        Err(anyhow!("Failed to receive ARP response from target device with IP: {}.", target_ip))
     }
 }
