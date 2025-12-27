@@ -66,15 +66,18 @@ impl PacketListener {
             return None; //return none if not TCP packet and doesn't match our target and interface IPs
         }
 
-        // parse TCP header and extract port and status using flags
+        // parse TCP header and get source and destination ports 
         let tcp_header: TcpPacket = TcpPacket::new(ip_header.payload())?;
+        let interface_port: u16 = tcp_header.get_destination();
+        let target_port: u16 = tcp_header.get_source();
+
+        // parse TCP packet flags and determine port status
         let status: PortStatus = tcp_builder::_parse_tcp_status(&tcp_header)?;
-        let port: u16 = tcp_header.get_destination();
 
         // try to acquire lock on probe map and send port status back to its probe scanner
         if let Ok(probe_map) = self.probe_map.lock() {
             // try to get the tx probe for port and remove it from map
-            if let Some(tx_probe) = probe_map.get(&port) {
+            if let Some(tx_probe) = probe_map.get(&(interface_port, target_port)) {
                 let _ = tx_probe.try_send(status).ok(); //send port status back to its probe scanner
             }
         }

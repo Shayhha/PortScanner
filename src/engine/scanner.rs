@@ -14,7 +14,7 @@ use crate::net::interface::DeviceInterface;
 use crate::utility::scanner_enums::{Mode, PortStatus};
 
 // define our custom types for scanner data structures
-pub type ProbeMap = Arc<Mutex<HashMap<u16, mpsc::Sender<PortStatus>>>>;
+pub type ProbeMap = Arc<Mutex<HashMap<(u16, u16), mpsc::Sender<PortStatus>>>>;
 pub type ResultsMap = Arc<Mutex<BTreeMap<u16, PortStatus>>>;
 pub type TxSender = Arc<Mutex<Box<dyn DataLinkSender>>>;
 pub type RxReciver = Box<dyn DataLinkReceiver>;
