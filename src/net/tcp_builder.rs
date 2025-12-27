@@ -19,7 +19,7 @@ pub fn _create_tcp_packet(src_ip: Ipv4Addr, src_mac: MacAddr, src_port: u16, dst
     const ETH: usize = 14;
     const IP: usize = 20;
     const TCP: usize = 20;
-    let mut packet_vec = vec![0u8; ETH + IP + TCP];
+    let mut packet_vec: Vec<u8> = vec![0u8; ETH + IP + TCP];
 
     // create ethernet header with source and destination MAC addresses
     let mut eth_header: MutableEthernetPacket = MutableEthernetPacket::new(&mut packet_vec[..ETH])

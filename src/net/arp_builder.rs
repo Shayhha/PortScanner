@@ -14,7 +14,7 @@ pub fn _create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ip
     // create packet header sizes and buffer vector for packet
     const ETH: usize = 14;
     const ARP: usize = 28;
-    let mut packet_vec = vec![0u8; ETH + ARP];
+    let mut packet_vec: Vec<u8> = vec![0u8; ETH + ARP];
 
     // create ethernet header with source and destination MAC addresses
     let mut eth_header = MutableEthernetPacket::new(&mut packet_vec[..ETH])
@@ -47,7 +47,7 @@ pub fn _create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ip
 pub fn _create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr, dst_mac: MacAddr) -> Result<Vec<u8>> {
     const ETH: usize = 14;
     const ARP: usize = 28;
-    let mut packet_vec = vec![0u8; ETH + ARP];
+    let mut packet_vec: Vec<u8> = vec![0u8; ETH + ARP];
 
     // create ethernet header with source and destination MAC addresses
     let mut eth_header = MutableEthernetPacket::new(&mut packet_vec[..ETH])
