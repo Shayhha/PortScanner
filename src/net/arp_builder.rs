@@ -10,7 +10,7 @@ use std::net::Ipv4Addr;
  * Function that creates a ARP request packet with the given parameters.
  * Returns packet vector that represents ARP request packet, returns error if failed creating packet.
  */
-pub fn create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr) -> Result<Vec<u8>> {
+pub fn _create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr) -> Result<Vec<u8>> {
     // create packet header sizes and buffer vector for packet
     const ETH: usize = 14;
     const ARP: usize = 28;
@@ -44,7 +44,7 @@ pub fn create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv
  * Function that creates a ARP response packet with the given parameters.
  * Returns packet vector that represents ARP response packet, returns error if failed creating packet.
  */
-pub fn create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr, dst_mac: MacAddr) -> Result<Vec<u8>> {
+pub fn _create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr, dst_mac: MacAddr) -> Result<Vec<u8>> {
     const ETH: usize = 14;
     const ARP: usize = 28;
     let mut packet_vec = vec![0u8; ETH + ARP];
@@ -77,7 +77,7 @@ pub fn create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ip
  * Function that extracts and validates ARP response packet.
  * Returns sender MAC address if valid ARP response, else returns None.
  */
-pub fn parse_arp_response(packet: &[u8], src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr) -> Option<MacAddr> {
+pub fn _parse_arp_response(packet: &[u8], src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr) -> Option<MacAddr> {
     // parse ethernet header and check if its ARP packet, if so continue
     let eth_header = EthernetPacket::new(packet)?;
     if eth_header.get_ethertype() != EtherTypes::Arp {

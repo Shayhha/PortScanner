@@ -16,14 +16,17 @@ use crate::utility::cli::Args;
  */
 #[tokio::main]
 async fn main() -> Result<()> {
+    // parse given command line arguments
     let args = Args::parse();
 
-    let device_interface: Arc<DeviceInterface> = Arc::new(DeviceInterface::get_device_interface()?);
+    // create device interface for performing scans
+    let device_interface: Arc<DeviceInterface> = Arc::new(DeviceInterface::new()?);
+    device_interface.show_info()?;
 
-    println!("Using device interface: {} {:?}", device_interface.interface.name, device_interface.interface.mac);
+    // create port scanner instance with given arguments
+    let scanner = PortScanner::new(device_interface, args.target, args.start_port, args.end_port, args.concurrency as usize, args.timeout, args.mode);
 
-    let scanner = PortScanner::new(device_interface, args.target, args.start_port, args.end_port, args.concurrency as usize, 5000u64, args.mode);
-
+    // start the port scanning process on given target
     scanner.start_scan().await?;
 
     Ok(())

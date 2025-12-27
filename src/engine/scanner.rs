@@ -5,9 +5,8 @@ use std::net::Ipv4Addr;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use std::fmt::Write;
-use tokio::sync::{Semaphore, OwnedSemaphorePermit, oneshot};
+use tokio::sync::{Semaphore, OwnedSemaphorePermit, mpsc};
 use tokio::task::JoinHandle;
-use colored::*;
 
 use crate::engine::{tcp, syn, xmas};
 use crate::engine::listener::PacketListener;
@@ -15,7 +14,7 @@ use crate::net::interface::DeviceInterface;
 use crate::utility::scanner_enums::{Mode, PortStatus};
 
 // define our custom types for scanner data structures
-pub type ProbeMap = Arc<Mutex<HashMap<u16, oneshot::Sender<PortStatus>>>>;
+pub type ProbeMap = Arc<Mutex<HashMap<u16, mpsc::Sender<PortStatus>>>>;
 pub type ResultsMap = Arc<Mutex<BTreeMap<u16, PortStatus>>>;
 pub type TxSender = Arc<Mutex<Box<dyn DataLinkSender>>>;
 pub type RxReciver = Box<dyn DataLinkReceiver>;
@@ -69,7 +68,7 @@ impl PortScanner {
 
         // create our packet listener task for capturing incoming response packets
         let packet_listener: PacketListener = PacketListener::new(self.device_interface.clone(), probe_map.clone());
-        packet_listener.start_listener(rx_receiver); //start packet listener in its own thread for handling incoming response packets
+        packet_listener.start_listener(rx_receiver, self.target_ip); //start packet listener in its own thread for handling incoming response packets
 
         // iterate over each port in given range and create async scan task for each port
         for target_port in self.start_port..=self.end_port {
@@ -77,19 +76,8 @@ impl PortScanner {
             let permit = scan_semaphore.clone().acquire_owned().await?;
 
             // create aysnc scan port task for port and add it to our scan tasks vector
-            scan_tasks_vec.push(tokio::spawn(Self::scan_port_task(
-                tx_sender.clone(),
-                probe_map.clone(),
-                results_map.clone(),
-                self.device_interface.ip,
-                self.device_interface.mac,
-                self.target_ip,
-                self.target_mac,
-                target_port,
-                self.timeout,
-                self.mode,
-                permit
-            )));
+            scan_tasks_vec.push(tokio::spawn(Self::scan_port_task(tx_sender.clone(), probe_map.clone(), results_map.clone(),
+                self.device_interface.ip, self.device_interface.mac, self.target_ip, self.target_mac,target_port, self.timeout, self.mode, permit)));
         }
 
         // wait for all scan tasks to finish
@@ -99,7 +87,7 @@ impl PortScanner {
 
         // try to acquire lock on results map and print the summary of scan results
         if let Ok(results_map) = results_map.lock() {
-            let _ = self.print_summary(&results_map).await?; //call print summary method
+            let _ = self.print_scan_summary(&results_map).await?; //call print summary method
         }
         // else we failed acquiring mutex, we print error message
         else {
@@ -114,7 +102,7 @@ impl PortScanner {
      * Static method for performing async port scan task for given port based on selected scan mode.
      */
     async fn scan_port_task(tx: TxSender, probe_map: ProbeMap, results_map: ResultsMap, interface_ip: Ipv4Addr, interface_mac: MacAddr, target_ip: Ipv4Addr, target_mac: MacAddr, target_port: u16, timeout: u64, mode: Mode, _permit: OwnedSemaphorePermit) {
-        //TODO perform port scan on desired port based on selected scan mode
+        // perform port scan on desired port based on selected scan mode
         let status = match mode {
             Mode::Tcp => tcp::scan_tcp(target_ip, target_port, timeout).await,
             Mode::Syn => syn::scan_syn(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
@@ -139,7 +127,7 @@ impl PortScanner {
     /**
      * Method for printing scan results summary with all scanned ports and their statuses.
      */
-    pub async fn print_summary(&self, results_map: &BTreeMap<u16, PortStatus>) -> Result<()> {
+    async fn print_scan_summary(&self, results_map: &BTreeMap<u16, PortStatus>) -> Result<()> {
         // define output string and counters for each port status
         let mut output: String = String::new();
         let mut open: u16 = 0;
@@ -148,47 +136,43 @@ impl PortScanner {
         let mut open_filtered: u16 = 0;
 
         // write summary header with scan configuration details
-        writeln!(&mut output, "\n{} Scan Summary {}", "-".repeat(29), "-".repeat(29))?;
+        writeln!(&mut output, "\n{} Scan Summary {}", "=".repeat(30), "=".repeat(30))?;
         writeln!(&mut output, "Target IP   : {}", self.target_ip)?;
-        writeln!(&mut output, "Target MAC  : {}\n", self.target_mac)?;
-        writeln!(&mut output, "Scan mode   : {:?}", self.mode)?;
-        writeln!(&mut output, "Port range  : {}-{}", self.start_port, self.end_port)?;
+        writeln!(&mut output, "Target MAC  : {}", self.target_mac)?;
+        writeln!(&mut output, "Scan mode   : {}", self.mode)?;
+        writeln!(&mut output, "Port range  : {} - {}", self.start_port, self.end_port)?;
         writeln!(&mut output, "Concurrency : {}", self.concurrency)?;
-        writeln!(&mut output, "{}\n", "-".repeat(72))?;
+        writeln!(&mut output, "{}\n", "=".repeat(74))?;
 
         // write table header with port results
         writeln!(&mut output, "{:<12} {}", "PORT", "STATUS")?;
 
         // iterate over results map and write each port result to output
         for (port, status) in results_map {
-            // set label based on port status and increment counter
-            let label = match status {
+            // increment status counters based on port status
+            match status {
                 PortStatus::Open => {
                     open += 1;
-                    "OPEN".green()
                 }
                 PortStatus::Closed => {
                     closed += 1;
-                    "CLOSED".red()
                 }
                 PortStatus::Filtered => {
                     filtered += 1;
-                    "FILTERED".yellow()
                 }
                 PortStatus::OpenFiltered => {
                     open_filtered += 1;
-                    "OPEN/FILTERED".magenta()
                 }
             };
 
             // write port and its status to output
-            writeln!(&mut output, "{:<12} {}", format!("{}/tcp", port), label)?;
+            writeln!(&mut output, "{:<12} {}", format!("{}/tcp", port), status)?;
         }
-        writeln!(&mut output, "{}\n", "-".repeat(72))?;
+        writeln!(&mut output, "{}\n", "=".repeat(72))?;
 
         // write final results summary with counts for each port status
-        writeln!(&mut output, "Results: Open: {} | Closed: {} | Filtered: {} | Open/Filtered: {} | Total: {}",
-            open.to_string().green(), closed.to_string().red(), filtered.to_string().yellow(), open_filtered.to_string().magenta(), results_map.len())?;
+        writeln!(&mut output, "Results: Open: \x1b[32m{}\x1b[0m | Closed: \x1b[31m{}\x1b[0m | Filtered: \x1b[33m{}\x1b[0m | Open/Filtered: \x1b[35m{}\x1b[0m | Total: \x1b[36m{}\x1b[0m",
+            open.to_string(), closed.to_string(), filtered.to_string(), open_filtered.to_string(), results_map.len())?;
 
         // print the final output to console
         println!("{}", output);

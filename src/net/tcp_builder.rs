@@ -14,7 +14,7 @@ use crate::utility::scanner_enums::PortStatus;
  * Function that creates a TCP packet with the given parameters.
  * Returns packet vector that represents TCP packet, returns error if failed creating packet.
  */
-pub fn create_tcp_packet(src_ip: Ipv4Addr, src_mac: MacAddr, src_port: u16, dst_ip: Ipv4Addr, dst_mac: MacAddr, dst_port: u16, flags: u8) -> Result<Vec<u8>> {
+pub fn _create_tcp_packet(src_ip: Ipv4Addr, src_mac: MacAddr, src_port: u16, dst_ip: Ipv4Addr, dst_mac: MacAddr, dst_port: u16, flags: u8) -> Result<Vec<u8>> {
     // create packet header sizes and buffer vector for packet
     const ETH: usize = 14;
     const IP: usize = 20;
@@ -63,7 +63,7 @@ pub fn create_tcp_packet(src_ip: Ipv4Addr, src_mac: MacAddr, src_port: u16, dst_
  * Function that parses TCP packet flags and determines port status.
  * Returns port status if flags are set, else returns None.
  */
-pub fn parse_tcp_status(tcp_packet: &TcpPacket) -> Option<PortStatus> {
+pub fn _parse_tcp_status(tcp_packet: &TcpPacket) -> Option<PortStatus> {
     // get the TCP flags value from packet
     let flags: u8 = tcp_packet.get_flags();
 

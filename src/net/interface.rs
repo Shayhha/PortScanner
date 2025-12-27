@@ -5,7 +5,8 @@ use pnet::ipnetwork::IpNetwork;
 use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
-use tokio::sync::oneshot;
+use std::fmt::Write;
+use tokio::sync::mpsc;
 
 use crate::net::arp_builder;
 
@@ -16,6 +17,8 @@ use crate::net::arp_builder;
 #[derive(Debug, Clone)]
 pub struct DeviceInterface {
     pub interface: NetworkInterface,
+    pub name: String,
+    pub description: String,
     pub mac: MacAddr,
     pub ip: Ipv4Addr,
     pub netmask: Ipv4Addr,
@@ -31,13 +34,38 @@ impl DeviceInterface {
      * Function that returns an instance of DeviceInterface struct for the default network interface.
      * Returns DeviceInterface instance or error if failed.
      */
-    pub fn get_device_interface() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let interface: NetworkInterface = Self::get_default_interface()?;
+        let name: String = interface.name.clone();
+        let description: String = interface.description.clone();
         let mac: MacAddr = Self::get_interface_mac_address(&interface)?;
         let (ip, netmask): (Ipv4Addr, Ipv4Addr) = Self::get_interface_ip_info(&interface)?;
         let default_gateway_ip: Ipv4Addr = Self::get_default_gateway_ip_address()?;
 
-        Ok(Self { interface, mac, ip, netmask, default_gateway_ip })
+        Ok(Self { interface, name, description, mac, ip, netmask, default_gateway_ip })
+    }
+
+
+    /**
+     * Method for printing device interface information.
+     */
+    pub fn show_info(&self) -> Result<()> {
+        // define output string
+        let mut output = String::new();
+
+        // write device interface information to output string
+        writeln!(&mut output, "\n{} Device Interface Info {}", "=".repeat(25), "=".repeat(26))?;
+        writeln!(&mut output, "{:<20}: {}", "Interface Name", self.name)?;
+        writeln!(&mut output, "{:<20}: {}", "Description", self.description)?;
+        writeln!(&mut output, "{:<20}: {}", "MAC Address", self.mac)?;
+        writeln!(&mut output, "{:<20}: {}", "IPv4 Address", self.ip)?;
+        writeln!(&mut output, "{:<20}: {}", "Netmask", self.netmask)?;
+        writeln!(&mut output, "{:<20}: {}", "Default Gateway", self.default_gateway_ip)?;
+        writeln!(&mut output, "{}\n", "=".repeat(74))?;
+
+        print!("{}", output);
+
+        Ok(())
     }
 
 
@@ -126,8 +154,8 @@ impl DeviceInterface {
      * Function that creates new task channel IPC for sending and receiving messages between two async tasks.
      * Returns Sender and Receiver handles for IPC communication.
      */
-    pub fn create_task_channel<T>() -> (oneshot::Sender<T>, oneshot::Receiver<T>) {
-        let (tx, rx) = oneshot::channel();
+    pub fn create_task_channel<T>() -> (mpsc::Sender<T>, mpsc::Receiver<T>) {
+        let (tx, rx) = mpsc::channel::<T>(1024);
         (tx, rx)
     }
 
@@ -149,7 +177,7 @@ impl DeviceInterface {
         };
 
         // create ARP request packet for resolving target device MAC address
-        let arp_packet_vec: Vec<u8> = arp_builder::create_arp_request_packet(device_interface.ip, device_interface.mac, arp_target_ip)?;
+        let arp_packet_vec: Vec<u8> = arp_builder::_create_arp_request_packet(device_interface.ip, device_interface.mac, arp_target_ip)?;
 
         // send ARP request and wait for ARP response from target device
         tx_sender.send_to(&arp_packet_vec, None)
@@ -165,7 +193,7 @@ impl DeviceInterface {
             let packet = rx_receiver.next()?;
 
             // if we received ARP response from target IP, parse the packet and return the MAC address
-            if let Some(mac) = arp_builder::parse_arp_response(packet, device_interface.ip, device_interface.mac, target_ip) {
+            if let Some(mac) = arp_builder::_parse_arp_response(packet, device_interface.ip, device_interface.mac, target_ip) {
                 return Ok(mac);
             }
         }

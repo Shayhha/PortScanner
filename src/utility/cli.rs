@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 /**
  * Command line arguments struct for port scanner application, includes flags and application info.
  */
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(
     author = "Shay Hahiashvili",
     version = "1.0.0",
@@ -36,7 +36,7 @@ pub struct Args {
     pub concurrency: u16,
 
     /// Per probe timeout in milliseconds
-    #[arg(short = 't', long, default_value_t = 800u64, value_parser = clap::value_parser!(u64).range(1..=60000))]
+    #[arg(short = 't', long, default_value_t = 2500u64, value_parser = clap::value_parser!(u64).range(1..=60000))]
     pub timeout: u64,
 
     /// Scan mode
