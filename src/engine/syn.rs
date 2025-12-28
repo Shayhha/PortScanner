@@ -17,7 +17,7 @@ use crate::utility::scanner_enums::PortStatus;
  */
 pub async fn scan_syn(tx_sender: TxSender, probe_map: ProbeMap, interface_ip: Ipv4Addr, interface_mac: MacAddr, target_ip: Ipv4Addr, target_mac: MacAddr, target_port: u16, timeout: u64) -> Result<PortStatus> {
     // choose a random port for sending probe from to avade detection and also create task channel for communicating with listener thread
-    let rand_interface_port: u16 = rand::rng().random_range(60000..65000); //get random interface port for sending probe to target
+    let rand_interface_port: u16 = rand::rng().random_range(49152..65535); //get random interface port for sending probe to target
     let (tx_probe, mut rx_probe) = DeviceInterface::create_task_channel::<PortStatus>(); //create task channel for IPC communication
 
     // try to acquire mutex for probe map and insert our tx probe for receiving status from listener
