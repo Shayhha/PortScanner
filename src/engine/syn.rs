@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use pnet::packet::tcp::TcpFlags;
 use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
@@ -25,13 +25,22 @@ pub async fn scan_syn(tx_sender: TxSender, probe_map: ProbeMap, interface_ip: Ip
         // insert our tx probe with key as tuple of our source interface port and target port
         probe_map.insert((rand_interface_port, target_port), tx_probe);
     }
+    // else we failed acquiring mutex, we return error message
+    else {
+        return Err(anyhow!("Could not add scan probe to probe map."));
+    }
 
     // create a TCP packet with SYN flag for performing TCP SYN scan using given tx sender channel
     let tcp_packet_vec = tcp_builder::_create_tcp_packet(interface_ip, interface_mac, rand_interface_port, target_ip, target_mac, target_port, TcpFlags::SYN)?;
 
     // try to acquire mutex for shared tx sender and send our probe to target on desired port
     if let Ok(mut tx_sender) = tx_sender.lock() {
-        tx_sender.send_to(&tcp_packet_vec, None);
+        tx_sender.send_to(&tcp_packet_vec, None)
+            .ok_or_else(|| anyhow!("Could not send probe to target with current socket."))??; //return error if failed sending probe
+    }
+    // else we failed acquiring mutex, we return error message
+    else {
+        return Err(anyhow!("Could not use socket for sending probe to target."));
     }
 
     // wait for the listener thread for sending response from target port with our rx probe channel
