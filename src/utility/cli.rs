@@ -10,9 +10,9 @@ use std::net::Ipv4Addr;
 #[command(
     author = "Shay Hahiashvili",
     version = "1.0.0",
-    about = "High-performance async port scanner supporting TCP, SYN and Xmas scans.",
+    about = "High-performance async port scanner supporting TCP, SYN, NULL, FIN and Xmas scans.",
     long_about = "High-performance asynchronous network port scanner written in Rust.\n\
-                Supports TCP, SYN and Xmas scanning techniques.\n\
+                Supports TCP, SYN, NULL, FIN and Xmas scanning techniques.\n\
                 Built with Tokio for scalable concurrency and low-level packet crafting\n\
                 to enable fast and accurate network reconnaissance.",
     arg_required_else_help = true,

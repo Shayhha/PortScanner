@@ -8,7 +8,7 @@ use std::fmt::Write;
 use tokio::sync::{Semaphore, OwnedSemaphorePermit, mpsc};
 use tokio::task::JoinHandle;
 
-use crate::engine::{tcp, syn, xmas};
+use crate::engine::{tcp, syn, null, fin, xmas, ack};
 use crate::engine::listener::PacketListener;
 use crate::net::interface::DeviceInterface;
 use crate::utility::scanner_enums::{Mode, PortStatus};
@@ -68,7 +68,7 @@ impl PortScanner {
 
         // create our packet listener task for capturing incoming response packets
         let packet_listener: PacketListener = PacketListener::new(self.device_interface.clone(), probe_map.clone());
-        packet_listener.start_listener(rx_receiver, self.target_ip); //start packet listener in its own thread for handling incoming response packets
+        packet_listener.start_listener(rx_receiver, self.target_ip, self.mode); //start packet listener in its own thread for handling incoming response packets
 
         // iterate over each port in given range and create async scan task for each port
         for target_port in self.start_port..=self.end_port {
@@ -106,7 +106,10 @@ impl PortScanner {
         let status = match mode {
             Mode::Tcp => tcp::scan_tcp(target_ip, target_port, timeout).await,
             Mode::Syn => syn::scan_syn(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
-            Mode::Xmas => xmas::scan_xmas(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await
+            Mode::Null => null::scan_null(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
+            Mode::Fin => fin::scan_fin(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
+            Mode::Xmas => xmas::scan_xmas(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
+            Mode::Ack => ack::scan_ack(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await
         }
         .unwrap_or_else(|e| {
             println!("Scan failed on port {}: {}", target_port, e);
@@ -163,6 +166,7 @@ impl PortScanner {
                 PortStatus::OpenFiltered => {
                     open_filtered += 1;
                 }
+                _ => {}
             };
 
             // write port and its status to output

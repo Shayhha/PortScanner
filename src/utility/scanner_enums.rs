@@ -9,7 +9,10 @@ use std::fmt;
 pub enum Mode {
     Tcp,
     Syn,
-    Xmas
+    Null,
+    Fin,
+    Xmas,
+    Ack
 }
 
 
@@ -21,7 +24,10 @@ impl fmt::Display for Mode {
         let output = match self {
             Mode::Tcp  => "\x1b[34mTCP Connect\x1b[0m",
             Mode::Syn  => "\x1b[32mSYN\x1b[0m",
-            Mode::Xmas => "\x1b[31mXMAS\x1b[0m"
+            Mode::Null => "\x1b[35mNULL\x1b[0m",
+            Mode::Fin  => "\x1b[36mFIN\x1b[0m",
+            Mode::Xmas => "\x1b[31mXMAS\x1b[0m",
+            Mode::Ack  => "\x1b[33mACK\x1b[0m"
         };
         write!(f, "{output}")
     }
@@ -36,6 +42,7 @@ pub enum PortStatus {
     Open,
     Closed,
     Filtered,
+    Unfiltered,
     OpenFiltered
 }
 
@@ -49,6 +56,7 @@ impl fmt::Display for PortStatus {
             PortStatus::Open => "\x1b[32mOpen\x1b[0m",
             PortStatus::Closed => "\x1b[31mClosed\x1b[0m",
             PortStatus::Filtered => "\x1b[33mFiltered\x1b[0m",
+            PortStatus::Unfiltered    => "\x1b[36mUnfiltered\x1b[0m",
             PortStatus::OpenFiltered => "\x1b[35mOpen/Filtered\x1b[0m"
         };
         write!(f, "{output}")

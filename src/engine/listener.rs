@@ -10,7 +10,7 @@ use std::thread;
 use crate::engine::scanner::{ProbeMap, RxReciver};
 use crate::net::interface::DeviceInterface;
 use crate::net::tcp_builder;
-use crate::utility::scanner_enums::PortStatus;
+use crate::utility::scanner_enums::{Mode, PortStatus};
 
 
 /**
@@ -38,12 +38,12 @@ impl PacketListener {
     /**
      * Method for starting the packet listener in thread for capturing response packets.
      */
-    pub fn start_listener(self, mut rx_receiver: RxReciver, target_ip: Ipv4Addr) {
+    pub fn start_listener(self, mut rx_receiver: RxReciver, target_ip: Ipv4Addr, mode: Mode) {
         // create our listener thread for capturing response packets for determining port status
         thread::spawn(move || {
             // listen for incoming packets and handle each packet using our method
             while let Ok(packet) = rx_receiver.next() {
-                self.handle_packet(packet, target_ip);
+                self.handle_packet(packet, target_ip, mode);
             }
         });
     }
@@ -52,7 +52,7 @@ impl PacketListener {
     /**
      * Method for handling packets captured by listener and sending port status to its probe scanner.
      */
-    fn handle_packet(&self, packet: &[u8], target_ip: Ipv4Addr) -> Option<()> {
+    fn handle_packet(&self, packet: &[u8], target_ip: Ipv4Addr, mode: Mode) -> Option<()> {
         // parse ethernet header and check if its IPv4 packet, if so continue
         let eth_header: EthernetPacket = EthernetPacket::new(packet)?;
         if eth_header.get_ethertype() != EtherTypes::Ipv4 {
@@ -71,8 +71,8 @@ impl PacketListener {
         let interface_port: u16 = tcp_header.get_destination();
         let target_port: u16 = tcp_header.get_source();
 
-        // parse TCP packet flags and determine port status
-        let status: PortStatus = tcp_builder::_parse_tcp_status(&tcp_header)?;
+        // parse TCP packet flags based on scan mode and determine port status
+        let status: PortStatus = tcp_builder::_parse_tcp_status(&tcp_header, mode)?;
 
         // try to acquire lock on probe map and send port status back to its probe scanner
         if let Ok(probe_map) = self.probe_map.lock() {

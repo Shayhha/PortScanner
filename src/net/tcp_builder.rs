@@ -7,7 +7,7 @@ use pnet::util::MacAddr;
 use std::net::Ipv4Addr;
 use rand::Rng;
 
-use crate::utility::scanner_enums::PortStatus;
+use crate::utility::scanner_enums::{Mode, PortStatus};
 
 
 /**
@@ -63,7 +63,7 @@ pub fn _create_tcp_packet(src_ip: Ipv4Addr, src_mac: MacAddr, src_port: u16, dst
  * Function that parses TCP packet flags and determines port status.
  * Returns port status if flags are set, else returns None.
  */
-pub fn _parse_tcp_status(tcp_packet: &TcpPacket) -> Option<PortStatus> {
+pub fn _parse_tcp_status(tcp_packet: &TcpPacket, mode: Mode) -> Option<PortStatus> {
     // get the TCP flags value from packet
     let flags: u8 = tcp_packet.get_flags();
 

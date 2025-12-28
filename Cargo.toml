@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = ["Shay Hahiashvili <shayhha@gmail.com>"]
 edition = "2024"
 license = "MIT"
-description = "High-performance async port scanner supporting TCP, SYN and Xmas scans."
+description = "High-performance async port scanner supporting TCP, SYN, NULL, FIN and Xmas scans."
 repository = "https://github.com/Shayhha/PortScanner"
 
 [dependencies]
