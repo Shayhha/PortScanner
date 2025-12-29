@@ -8,7 +8,7 @@ use std::fmt::Write;
 use tokio::sync::{Semaphore, OwnedSemaphorePermit, mpsc};
 use tokio::task::JoinHandle;
 
-use crate::engine::{tcp, syn, null, fin, xmas, ack};
+use crate::engine::{udp, tcp, syn, null, fin, xmas, ack};
 use crate::engine::listener::PacketListener;
 use crate::net::interface::DeviceInterface;
 use crate::utility::scanner_enums::{Mode, PortStatus};
@@ -67,8 +67,8 @@ impl PortScanner {
         let rx_receiver: RxReciver = rx; //initialize rx receiver handle for listener thread
 
         // create our packet listener task for capturing incoming response packets
-        let packet_listener: PacketListener = PacketListener::new(self.device_interface.clone(), probe_map.clone());
-        packet_listener.start_listener(rx_receiver, self.target_ip, self.mode); //start packet listener in its own thread for handling incoming response packets
+        let packet_listener: PacketListener = PacketListener::new(self.device_interface.clone(), probe_map.clone(), self.target_ip, self.mode);
+        packet_listener.start_listener(rx_receiver); //start packet listener in its own thread for handling incoming response packets
 
         // iterate over each port in given range and create async scan task for each port
         for target_port in self.start_port..=self.end_port {
@@ -87,7 +87,7 @@ impl PortScanner {
 
         // try to acquire lock on results map and print the summary of scan results
         if let Ok(results_map) = results_map.lock() {
-            let _ = self.print_scan_summary(&results_map).await?; //call print summary method
+            let _ = self.print_scan_summary(&results_map).await?; //call print scan summary method
         }
         // else we failed acquiring mutex, we print error message
         else {
@@ -104,6 +104,7 @@ impl PortScanner {
     async fn scan_port_task(tx: TxSender, probe_map: ProbeMap, results_map: ResultsMap, interface_ip: Ipv4Addr, interface_mac: MacAddr, target_ip: Ipv4Addr, target_mac: MacAddr, target_port: u16, timeout: u64, mode: Mode, _permit: OwnedSemaphorePermit) {
         // perform port scan on desired port based on selected scan mode
         let status = match mode {
+            Mode::Udp => udp::scan_udp(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
             Mode::Tcp => tcp::scan_tcp(target_ip, target_port, timeout).await,
             Mode::Syn => syn::scan_syn(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
             Mode::Null => null::scan_null(tx, probe_map, interface_ip, interface_mac, target_ip, target_mac, target_port, timeout).await,
@@ -138,6 +139,10 @@ impl PortScanner {
         let mut filtered: u16 = 0;
         let mut unfiltered: u16 = 0;
         let mut open_filtered: u16 = 0;
+        let protocol = match self.mode {
+            Mode::Udp => "udp",
+            _ => "tcp"
+        };
 
         // write summary header with scan configuration details
         writeln!(&mut output, "\n{} Scan Summary {}", "=".repeat(30), "=".repeat(30))?;
@@ -163,23 +168,29 @@ impl PortScanner {
             }
 
             // write port and its status to output
-            writeln!(&mut output, "{:<12} {}", format!("{}/tcp", port), status)?;
+            writeln!(&mut output, "{:<12} {}", format!("{}/{}", port, protocol), status)?;
         }
         writeln!(&mut output, "{}\n", "=".repeat(72))?;
 
         // write final results summary with counts for each port status
         match self.mode {
+            // means UDP scan mode
+            Mode::Udp => {
+                writeln!(&mut output,"Results: Open: \x1b[32m{}\x1b[0m | Closed: \x1b[31m{}\x1b[0m | Filtered: \x1b[33m{}\x1b[0m | Open/Filtered: \x1b[35m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
+                    open, closed, filtered, open_filtered, results_map.len())?;
+            },
+
             // means TCP or SYN scan modes
             Mode::Tcp | Mode::Syn => {
                 writeln!(&mut output,"Results: Open: \x1b[32m{}\x1b[0m | Closed: \x1b[31m{}\x1b[0m | Filtered: \x1b[33m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
                     open, closed, filtered, results_map.len())?;
-            }
+            },
 
             // means FIN, NULL or XMAS scan modes
             Mode::Fin | Mode::Null | Mode::Xmas => {
                 writeln!(&mut output, "Results: Closed: \x1b[31m{}\x1b[0m | Open/Filtered: \x1b[35m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
                     closed, open_filtered, results_map.len())?;
-            }
+            },
 
             // means ACK scan mode
             Mode::Ack => {
