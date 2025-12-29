@@ -136,6 +136,7 @@ impl PortScanner {
         let mut open: u16 = 0;
         let mut closed: u16 = 0;
         let mut filtered: u16 = 0;
+        let mut unfiltered: u16 = 0;
         let mut open_filtered: u16 = 0;
 
         // write summary header with scan configuration details
@@ -154,20 +155,12 @@ impl PortScanner {
         for (port, status) in results_map {
             // increment status counters based on port status
             match status {
-                PortStatus::Open => {
-                    open += 1;
-                }
-                PortStatus::Closed => {
-                    closed += 1;
-                }
-                PortStatus::Filtered => {
-                    filtered += 1;
-                }
-                PortStatus::OpenFiltered => {
-                    open_filtered += 1;
-                }
-                _ => {}
-            };
+                PortStatus::Open => open += 1,
+                PortStatus::Closed => closed += 1,
+                PortStatus::Filtered => filtered += 1,
+                PortStatus::Unfiltered => unfiltered += 1,
+                PortStatus::OpenFiltered => open_filtered += 1
+            }
 
             // write port and its status to output
             writeln!(&mut output, "{:<12} {}", format!("{}/tcp", port), status)?;
@@ -175,8 +168,25 @@ impl PortScanner {
         writeln!(&mut output, "{}\n", "=".repeat(72))?;
 
         // write final results summary with counts for each port status
-        writeln!(&mut output, "Results: Open: \x1b[32m{}\x1b[0m | Closed: \x1b[31m{}\x1b[0m | Filtered: \x1b[33m{}\x1b[0m | Open/Filtered: \x1b[35m{}\x1b[0m | Total: \x1b[36m{}\x1b[0m",
-            open.to_string(), closed.to_string(), filtered.to_string(), open_filtered.to_string(), results_map.len())?;
+        match self.mode {
+            // means TCP or SYN scan modes
+            Mode::Tcp | Mode::Syn => {
+                writeln!(&mut output,"Results: Open: \x1b[32m{}\x1b[0m | Closed: \x1b[31m{}\x1b[0m | Filtered: \x1b[33m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
+                    open, closed, filtered, results_map.len())?;
+            }
+
+            // means FIN, NULL or XMAS scan modes
+            Mode::Fin | Mode::Null | Mode::Xmas => {
+                writeln!(&mut output, "Results: Closed: \x1b[31m{}\x1b[0m | Open/Filtered: \x1b[35m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
+                    closed, open_filtered, results_map.len())?;
+            }
+
+            // means ACK scan mode
+            Mode::Ack => {
+                writeln!(&mut output, "Results: Filtered: \x1b[33m{}\x1b[0m | Unfiltered: \x1b[36m{}\x1b[0m | Total: \x1b[1m{}\x1b[0m",
+                    filtered, unfiltered, results_map.len())?;
+            }
+        }
 
         // print the final output to console
         println!("{}", output);

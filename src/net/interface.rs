@@ -51,7 +51,7 @@ impl DeviceInterface {
      */
     pub fn show_info(&self) -> Result<()> {
         // define output string
-        let mut output = String::new();
+        let mut output: String = String::new();
 
         // write device interface information to output string
         writeln!(&mut output, "\n{} Device Interface Info {}", "=".repeat(25), "=".repeat(26))?;
@@ -130,8 +130,8 @@ impl DeviceInterface {
      */
     pub fn check_local_device(device_interface: &DeviceInterface, target_ip: Ipv4Addr) -> bool {
         // calculate network address for interface and target IP addresses using our interface netmask
-        let interface_netmask = u32::from(device_interface.ip) & u32::from(device_interface.netmask);
-        let target_ip_netmask = u32::from(target_ip) & u32::from(device_interface.netmask);
+        let interface_netmask: u32 = u32::from(device_interface.ip) & u32::from(device_interface.netmask);
+        let target_ip_netmask: u32 = u32::from(target_ip) & u32::from(device_interface.netmask);
 
         // retrun true if both network addresses are same, else return false
         interface_netmask == target_ip_netmask
@@ -169,7 +169,7 @@ impl DeviceInterface {
         let (mut tx_sender, mut rx_receiver) = Self::create_datalink_channel(&device_interface)?;
 
         // determine if target IP is in our local network, if not we send ARP request to default gateway IP
-        let arp_target_ip = if Self::check_local_device(device_interface, target_ip) {
+        let arp_target_ip: Ipv4Addr = if Self::check_local_device(device_interface, target_ip) {
             target_ip
         } 
         else {
@@ -190,7 +190,7 @@ impl DeviceInterface {
         // listen for incuming ARP response packets
         while start_time.elapsed() < end_time {
             // get packet from rx receiver
-            let packet = rx_receiver.next()?;
+            let packet: &[u8] = rx_receiver.next()?;
 
             // if we received ARP response from target IP, parse the packet and return the MAC address
             if let Some(mac) = arp_builder::_parse_arp_response(packet, device_interface.ip, device_interface.mac, target_ip) {

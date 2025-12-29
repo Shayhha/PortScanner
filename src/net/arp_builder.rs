@@ -17,14 +17,14 @@ pub fn _create_arp_request_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ip
     let mut packet_vec: Vec<u8> = vec![0u8; ETH + ARP];
 
     // create ethernet header with source and destination MAC addresses
-    let mut eth_header = MutableEthernetPacket::new(&mut packet_vec[..ETH])
+    let mut eth_header: MutableEthernetPacket = MutableEthernetPacket::new(&mut packet_vec[..ETH])
         .ok_or_else(|| anyhow!("Failed to create Ethernet header for ARP request packet."))?;
     eth_header.set_source(src_mac);
     eth_header.set_destination(MacAddr::broadcast());
     eth_header.set_ethertype(EtherTypes::Arp);
 
     // create ARP request header with source and destination IP addresses
-    let mut arp_header = MutableArpPacket::new(&mut packet_vec[ETH..ETH + ARP])
+    let mut arp_header: MutableArpPacket = MutableArpPacket::new(&mut packet_vec[ETH..ETH + ARP])
         .ok_or_else(|| anyhow!("Failed to create ARP header for ARP request packet."))?;
     arp_header.set_hardware_type(ArpHardwareTypes::Ethernet);
     arp_header.set_protocol_type(EtherTypes::Ipv4);
@@ -50,14 +50,14 @@ pub fn _create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: I
     let mut packet_vec: Vec<u8> = vec![0u8; ETH + ARP];
 
     // create ethernet header with source and destination MAC addresses
-    let mut eth_header = MutableEthernetPacket::new(&mut packet_vec[..ETH])
+    let mut eth_header: MutableEthernetPacket = MutableEthernetPacket::new(&mut packet_vec[..ETH])
         .ok_or_else(|| anyhow!("Failed to create Ethernet header for ARP response packet."))?;
     eth_header.set_source(src_mac);
     eth_header.set_destination(dst_mac);
     eth_header.set_ethertype(EtherTypes::Arp);
 
     // create ARP response header with source and destination IP and MAC addresses
-    let mut arp_header = MutableArpPacket::new(&mut packet_vec[ETH..ETH + ARP])
+    let mut arp_header: MutableArpPacket = MutableArpPacket::new(&mut packet_vec[ETH..ETH + ARP])
         .ok_or_else(|| anyhow!("Failed to create ARP header for ARP response packet."))?;
     arp_header.set_hardware_type(ArpHardwareTypes::Ethernet);
     arp_header.set_protocol_type(EtherTypes::Ipv4);
@@ -79,13 +79,13 @@ pub fn _create_arp_response_packet(src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: I
  */
 pub fn _parse_arp_response(packet: &[u8], src_ip: Ipv4Addr, src_mac: MacAddr, dst_ip: Ipv4Addr) -> Option<MacAddr> {
     // parse ethernet header and check if its ARP packet, if so continue
-    let eth_header = EthernetPacket::new(packet)?;
+    let eth_header: EthernetPacket = EthernetPacket::new(packet)?;
     if eth_header.get_ethertype() != EtherTypes::Arp {
         return None;
     }
 
     // parse ARP header and validate fields for are response, if matches return sender MAC address
-    let arp_header = ArpPacket::new(eth_header.payload())?;
+    let arp_header: ArpPacket = ArpPacket::new(eth_header.payload())?;
     if arp_header.get_operation() != ArpOperations::Reply || arp_header.get_sender_proto_addr() != dst_ip || 
         arp_header.get_target_proto_addr() != src_ip || arp_header.get_target_hw_addr() != src_mac {
         return None;

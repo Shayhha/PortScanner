@@ -67,16 +67,46 @@ pub fn _parse_tcp_status(tcp_packet: &TcpPacket, mode: Mode) -> Option<PortStatu
     // get the TCP flags value from packet
     let flags: u8 = tcp_packet.get_flags();
 
-    // check if SYN and ACK flags are set, if so return open port
-    if flags & TcpFlags::SYN != 0 && flags & TcpFlags::ACK != 0 {
-        Some(PortStatus::Open)
-    }
-    // else check if RST flag is set, if so return closed port 
-    else if flags & TcpFlags::RST != 0 {
-        Some(PortStatus::Closed)
-    }
-    // else if no relevant flags are set we return none 
-    else {
-        return None
+    // determine port status based on scan mode and TCP flags
+    match mode {
+        // means TCP connect scan, we do not need to parse flags
+        Mode::Tcp => {
+            // TCP connect scan should not use raw packets
+            return None
+        }
+
+        // means SYN scan, we need to check for SYN and RST flags for port status
+        Mode::Syn => {
+            // check if SYN and ACK flags are set, if so return open port
+            if flags & TcpFlags::SYN != 0 && flags & TcpFlags::ACK != 0 {
+                Some(PortStatus::Open)
+            }
+            // else check if RST flag is set, if so return closed port 
+            else if flags & TcpFlags::RST != 0 {
+                Some(PortStatus::Closed)
+            }
+            // else if no relevant flags are set we return none
+            else {
+                return None
+            }
+        }
+
+        // means FIN, NULL or XMAS scans, we need to check for RST flag for port status
+        Mode::Fin | Mode::Null | Mode::Xmas => {
+            if flags & TcpFlags::RST != 0 {
+                Some(PortStatus::Closed)
+            } else {
+                return None
+            }
+        }
+
+        // means ACK scan, we need to check for RST flag for firewall status
+        Mode::Ack => {
+            if flags & TcpFlags::RST != 0 {
+                Some(PortStatus::Unfiltered)
+            } else {
+                return None
+            }
+        }
     }
 }
