@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use netdev::{self, NetworkDevice};
 use pnet::datalink::{self, NetworkInterface, DataLinkSender, DataLinkReceiver};
 use pnet::ipnetwork::IpNetwork;
 use pnet::util::MacAddr;
@@ -37,10 +36,10 @@ impl DeviceInterface {
     pub fn new() -> Result<Self> {
         let interface: NetworkInterface = Self::get_default_interface()?;
         let name: String = interface.name.clone();
-        let description: String = interface.description.clone();
+        let description: String = Self::get_interface_description(&interface);
         let mac: MacAddr = Self::get_interface_mac_address(&interface)?;
         let (ip, netmask): (Ipv4Addr, Ipv4Addr) = Self::get_interface_ip_info(&interface)?;
-        let default_gateway_ip: Ipv4Addr = Self::get_default_gateway_ip_address()?;
+        let default_gateway_ip: Ipv4Addr = Self::get_default_gateway_ip_address(&interface)?;
 
         Ok(Self { interface, name, description, mac, ip, netmask, default_gateway_ip })
     }
@@ -83,6 +82,17 @@ impl DeviceInterface {
 
 
     /**
+     * Function that returns the description of the interface.
+     * Returns description of interface if present, else default description.
+     */
+    fn get_interface_description(interface: &NetworkInterface) -> String {
+        interface.description.clone().trim().is_empty()
+            .then(|| "Default network interface".to_string())
+            .unwrap_or_else(|| interface.description.clone())
+    }
+
+
+    /**
      * Function that returns the MAC address of the interface.
      * Returns MAC address or error if not found.
      */
@@ -111,16 +121,14 @@ impl DeviceInterface {
      * Function that returns the default gateway IPv4 address.
      * Returns IPv4 address of default gateway or error if not found.
      */
-    fn get_default_gateway_ip_address() -> Result<Ipv4Addr> {
-        let default_gateway: NetworkDevice = netdev::get_default_gateway()
-            .map_err(|e| anyhow!("Failed to get default gateway: {}.", e))?;
+    fn get_default_gateway_ip_address(interface: &NetworkInterface) -> Result<Ipv4Addr> {
+        let (ipv4_vec, _) = default_gateway::get_default_gateway(&interface.name)
+            .ok_or_else(|| anyhow!("Interface {} has no gateway information.", interface.name))?;
 
-        let default_gateway_ip: Ipv4Addr = default_gateway.ipv4
+        ipv4_vec
             .first()
             .copied()
-            .ok_or_else(|| anyhow!("No IPv4 gateway found."))?;
-        
-        Ok(default_gateway_ip)
+            .ok_or_else(|| anyhow!("Interface {} has no IPv4 default gateway.", interface.name))
     }
 
 
