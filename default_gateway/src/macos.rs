@@ -1,17 +1,18 @@
 use objc2_core_foundation::{CFString, CFDictionary};
 use objc2_system_configuration::{SCDynamicStore, SCDynamicStoreCopyValue};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::error::Error;
 use std::ptr;
 
 
 /**
  * Function for getting default gateway IPv4 and IPv6 addresses for the given interface.
- * Returns tuple of IPv4 and IPv6 vectors, else returns None if not found given interface.
+ * Returns tuple of IPv4 and IPv6 vectors, else returns Error if not found given interface.
  */
-pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Addr>)> {
+pub fn get_default_gateway(interface: &str) -> Result<(Vec<Ipv4Addr>, Vec<Ipv6Addr>), Box<dyn Error>> {
     // create dynamic store for getting gateway information
     let name: CFString = CFString::from_static_string("gateway_lookup");
-    let store: CFRetained<SCDynamicStore> = unsafe { SCDynamicStore::new(None, &name, None, ptr::null_mut()) }?;
+    let store: CFRetained<SCDynamicStore> = unsafe { SCDynamicStore::new(None, &name, None, ptr::null_mut()) }.ok_or("Failed to create dynamic store for interface.")?;
 
     // define our gateway IP vectors for retrieving gateway IP addresses of given interface
     let mut ipv4_vec: Vec<Ipv4Addr> = Vec::new();
@@ -36,7 +37,7 @@ pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Ad
                         .get(&CFString::from_static_string("Router")).and_then(|v| v.downcast::<CFString>())
                     {
                         // create router IP address from state router without interface suffix
-                        let router_ip: &str = router.to_string().split('%').next()?;
+                        let router_ip: &str = router.to_string().split('%').next().ok_or("Failed to parse router IP address.")?;
 
                         // parse router IP address and check its version and add to our matching vector
                         if let Ok(ip) = router_ip.parse::<Ipv4Addr>() {
@@ -53,9 +54,9 @@ pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Ad
 
     // check that both ip vectors are not empty and return given interface gateway IP addresses
     if ipv4_vec.is_empty() && ipv6_vec.is_empty() {
-        None
+        Err("No default gateway found for given interface.".into())
     }
     else {
-        Some((ipv4_vec, ipv6_vec))
+        Ok((ipv4_vec, ipv6_vec))
     }
 }

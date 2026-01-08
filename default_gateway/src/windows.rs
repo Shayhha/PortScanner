@@ -2,15 +2,16 @@ use windows_sys::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, NO_ERROR};
 use windows_sys::Win32::NetworkManagement::IpHelper::{GAA_FLAG_INCLUDE_GATEWAYS, IP_ADAPTER_ADDRESSES_LH, IP_ADAPTER_GATEWAY_ADDRESS_LH, GetAdaptersAddresses};
 use windows_sys::Win32::Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKET_ADDRESS, SOCKADDR_INET};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::error::Error;
 use std::ffi::CStr;
 use std::ptr;
 
 
 /**
  * Function for getting default gateway IPv4 and IPv6 addresses for the given interface.
- * Returns tuple of IPv4 and IPv6 vectors, else returns None if not found given interface.
+ * Returns tuple of IPv4 and IPv6 vectors, else returns Error if not found given interface.
  */
-pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Addr>)> {
+pub fn get_default_gateway(interface: &str) -> Result<(Vec<Ipv4Addr>, Vec<Ipv6Addr>), Box<dyn Error>> {
     // define our gateway IP vectors for retrieving gateway IP addresses of given interface
     let mut ipv4_vec: Vec<Ipv4Addr> = Vec::new();
     let mut ipv6_vec: Vec<Ipv6Addr> = Vec::new();
@@ -20,7 +21,7 @@ pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Ad
     unsafe {
         // get required adapter buffer size for retrieving gateway IP addresses, if fails we return none
         if GetAdaptersAddresses(AF_UNSPEC as u32, GAA_FLAG_INCLUDE_GATEWAYS, ptr::null_mut(), ptr::null_mut(), &mut adapter_buffer_size) != ERROR_BUFFER_OVERFLOW {
-            return None;
+            return Err("Failed to determine adapter buffer size.".into());
         }
     }
 
@@ -29,7 +30,7 @@ pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Ad
     unsafe {
         // allocate our adapter buffer with gateway adapter data, if fails we return none
         if GetAdaptersAddresses(AF_UNSPEC as u32, GAA_FLAG_INCLUDE_GATEWAYS, ptr::null_mut(), adapter_buffer.as_mut_ptr().cast(), &mut adapter_buffer_size) != NO_ERROR {
-            return None;
+            return Err("Failed to retrieve adapter data.".into());
         }
     }
 
@@ -84,9 +85,9 @@ pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Ad
 
     // check that both ip vectors are not empty and return given interface gateway IP addresses
     if ipv4_vec.is_empty() && ipv6_vec.is_empty() {
-        None
+        Err("No default gateway found for given interface.".into())
     }
     else {
-        Some((ipv4_vec, ipv6_vec))
+        Ok((ipv4_vec, ipv6_vec))
     }
 }

@@ -2,6 +2,7 @@ use netlink_sys::{Socket, SocketAddr, protocols::NETLINK_ROUTE};
 use netlink_packet_core::{NetlinkMessage, NetlinkPayload, NLM_F_DUMP, NLM_F_REQUEST};
 use netlink_packet_route::{RouteNetlinkMessage, link::{LinkMessage, LinkAttribute}, route::{RouteMessage, RouteAttribute, RouteAddress}};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::error::Error;
 
 
 /**
@@ -77,12 +78,12 @@ fn handle_netlink_messages(socket: &Socket, mut handler: impl FnMut(RouteNetlink
 
 /**
  * Helper function for getting interface index for the given interface.
- * Returns interface index, else returns None if not found given interface.
+ * Returns interface index, else returns Error if not found given interface.
  */
-fn get_interface_index(interface: &str) -> Option<u32> {
+fn get_interface_index(interface: &str) -> Result<u32, Box<dyn Error>> {
     // create new netlink socket and bind to an address for sending and receiving netlink messages
-    let mut socket: Socket = Socket::new(NETLINK_ROUTE).ok()?;
-    socket.bind(&SocketAddr::new(0, 0)).ok()?;
+    let mut socket: Socket = Socket::new(NETLINK_ROUTE)?;
+    socket.bind(&SocketAddr::new(0, 0))?;
 
     // define our interface index we need to retrieve using netlink
     let mut interface_index: Option<u32> = None;
@@ -95,7 +96,7 @@ fn get_interface_index(interface: &str) -> Option<u32> {
     // create link message buffer and send it to netlink for fetching index
     let mut link_message_buffer: Vec<u8> = vec![0u8; link_message.buffer_len()];
     link_message.serialize(&mut link_message_buffer);
-    socket.send(&link_message_buffer, 0).ok()?;
+    socket.send(&link_message_buffer, 0)?;
 
     // wait for message response from netlink and get our interface index
     handle_netlink_messages(&socket, |inner_message: RouteNetlinkMessage| {
@@ -114,18 +115,24 @@ fn get_interface_index(interface: &str) -> Option<u32> {
         true
     });
 
-    interface_index
+    // check that we found interface index and return our interface index
+    if let Some(interface_index) = interface_index {
+        Ok(interface_index)
+    }
+    else {
+        Err("No index found for given interface.".into())
+    }
 }
 
 
 /**
  * Helper function for getting default gateway IPv4 and IPv6 addresses for the given interface.
- * Returns tuple of IPv4 and IPv6 vectors, else returns None if not found given interface.
+ * Returns tuple of IPv4 and IPv6 vectors, else returns Error if not found given interface.
  */
-fn get_interface_default_gateway(interface_index: u32) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Addr>)> {
+fn get_interface_default_gateway(interface_index: u32) -> Result<(Vec<Ipv4Addr>, Vec<Ipv6Addr>), Box<dyn Error>> {
     // create new netlink socket and bind to an address for sending and receiving netlink messages
-    let mut socket: Socket = Socket::new(NETLINK_ROUTE).ok()?;
-    socket.bind(&SocketAddr::new(0, 0)).ok()?;
+    let mut socket: Socket = Socket::new(NETLINK_ROUTE)?;
+    socket.bind(&SocketAddr::new(0, 0))?;
 
     // define our gateway IP vectors for retrieving gateway IP addresses of given interface
     let mut ipv4_vec: Vec<Ipv4Addr> = Vec::new();
@@ -139,7 +146,7 @@ fn get_interface_default_gateway(interface_index: u32) -> Option<(Vec<Ipv4Addr>,
     // create route message buffer and send it to netlink for fetching IP addresses
     let mut route_message_buffer: Vec<u8> = vec![0u8; route_message.buffer_len()];
     route_message.serialize(&mut route_message_buffer);
-    socket.send(&route_message_buffer, 0).ok()?;
+    socket.send(&route_message_buffer, 0)?;
 
     // wait for message response from netlink and get our gateway IP addresses
     handle_netlink_messages(&socket, |inner_message: RouteNetlinkMessage| {
@@ -177,26 +184,27 @@ fn get_interface_default_gateway(interface_index: u32) -> Option<(Vec<Ipv4Addr>,
         true
     });
 
-    Some((ipv4_vec, ipv6_vec))
+    // check that both ip vectors are not empty and return given interface gateway IP addresses
+    if ipv4_vec.is_empty() && ipv6_vec.is_empty() {
+        Err("No default gateway found for given interface.".into())
+    }
+    else {
+        Ok((ipv4_vec, ipv6_vec))
+    }
 }
 
 
 /**
  * Function for getting default gateway IPv4 and IPv6 addresses for the given interface.
- * Returns tuple of IPv4 and IPv6 vectors, else returns None if not found given interface.
+ * Returns tuple of IPv4 and IPv6 vectors, else returns Error if not found given interface.
  */
-pub fn get_default_gateway(interface: &str) -> Option<(Vec<Ipv4Addr>, Vec<Ipv6Addr>)> {
+pub fn get_default_gateway(interface: &str) -> Result<(Vec<Ipv4Addr>, Vec<Ipv6Addr>), Box<dyn Error>> {
     // resolve index for given interface for retrieving default gateway IP addresses
     let interface_index: u32 = get_interface_index(interface)?;
 
     // retrieve interface default gateway IP addresses with its ip vectors
     let (ipv4_vec, ipv6_vec) = get_interface_default_gateway(interface_index)?;
 
-    // check that both ip vectors are not empty and return given interface gateway IP addresses
-    if ipv4_vec.is_empty() && ipv6_vec.is_empty() {
-        None
-    }
-    else {
-        Some((ipv4_vec, ipv6_vec))
-    }
+    // return interface default gateway IP addresses 
+    Ok((ipv4_vec, ipv6_vec))
 }

@@ -123,7 +123,7 @@ impl DeviceInterface {
      */
     fn get_default_gateway_ip_address(interface: &NetworkInterface) -> Result<Ipv4Addr> {
         let (ipv4_vec, _) = default_gateway::get_default_gateway(&interface.name)
-            .ok_or_else(|| anyhow!("Interface {} has no gateway information.", interface.name))?;
+            .map_err(|_| anyhow!("Interface {} has no gateway information.", interface.name))?;
 
         ipv4_vec
             .first()
